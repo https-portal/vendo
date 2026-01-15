@@ -90,6 +90,7 @@ tr:nth-child(even) { background-color: #f9fafb; }
       <button class="change-pass-btn" onclick="openPassModal()"><i class="fas fa-key"></i> Change Password</button>
       <button class="history-btn" onclick="openTransactionModal()"><i class="fas fa-history"></i> Transaction History</button>
       <button class="logout" onclick="logoutAdmin()"><i class="fas fa-sign-out-alt"></i> Logout</button>
+       <button class="logout" onclick="openServerModal()"><i class="fas fa-sign-out-alt"></i> ServerIp</button>
     </div>
   </div>
 
@@ -142,6 +143,20 @@ tr:nth-child(even) { background-color: #f9fafb; }
     <button class="cancel" onclick="closeTransactionModal()">Close</button>
   </div>
 </div>
+
+
+<!-- Server IP Modal -->
+<div id="serverModal" class="modal">
+  <div class="modal-content">
+    <h3>Update Server IP</h3>
+    <input type="text" id="serverIpInput" placeholder="Enter new Server IP" />
+    <br>
+    <button class="confirm" onclick="confirmServerIp()">Update</button>
+    <button class="cancel" onclick="closeServerModal()">Cancel</button>
+  </div>
+</div>
+
+
 
 <script>
 const firebaseConfig = {
@@ -315,6 +330,35 @@ window.onclick = function(event) {
   if (event.target === document.getElementById("passModal")) closePassModal();
   if (event.target === document.getElementById("transactionModal")) closeTransactionModal();
 }
+
+// Server IP Modal
+function openServerModal() {
+  // Load current IP
+  db.ref('server/serverip').once('value').then(snap => {
+    document.getElementById("serverIpInput").value = snap.val() || "";
+    document.getElementById("serverModal").style.display = "block";
+  });
+}
+
+function closeServerModal() {
+  document.getElementById("serverModal").style.display = "none";
+  document.getElementById("serverIpInput").value = "";
+}
+
+function confirmServerIp() {
+  const newIp = document.getElementById("serverIpInput").value.trim();
+  if (!newIp) { alert("Enter a valid IP!"); return; }
+
+  db.ref('server/serverip').set(newIp)
+    .then(() => {
+      alert("Server IP updated to: " + newIp);
+      closeServerModal();
+    })
+    .catch(err => alert("Error: " + err.message));
+}
+
+
+
 </script>
 
 </body>
