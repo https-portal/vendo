@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>PadWallet Dashboard</title>
+
+<!-- Firebase SDKs -->
+<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap');
+
+* { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Poppins', sans-serif; }
+body {
+  background: linear-gradient(135deg, #2563eb, #4bc7d8);
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 20px;
+}
+
+.dashboard {
+  background: #fff;
+  border-radius: 15px;
+  padding: 30px 25px;
+  width: 100%;
+  max-width: 400px;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+  text-align: center;
+  display: none;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  display: flex;
+  flex-direction: column;
+}
+.dashboard.show { opacity: 1; }
+
+.dashboard h2 { color: #2563eb; margin-bottom: 5px; font-weight: 600; }
+.user-info, .balance { margin-bottom: 10px; }
+.balance { font-size: 20px; font-weight: 600; color: #1e40af; }
+
+button {
+  padding: 12px 20px;
+  margin-top: 10px;
+  width: 100%;
+  font-size: 15px;
+  font-weight: 600;
+  border: none;
+  border-radius: 8px;
+  background: #2563eb;
+  color: #fff;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+button:hover { background: #1e40af; }
+
+.section { margin-top: 25px; padding-top: 15px; border-top: 1px solid #ccc; text-align: left; }
+.section h3 { color: #2563eb; margin-bottom: 10px; font-weight: 600; }
+
+input {
+  width: 100%;
+  padding: 12px 15px;
+  margin-bottom: 12px;
+  border-radius: 8px;
+  border: 1px solid #ccc;
+  font-size: 14px;
+  transition: all 0.3s ease;
+}
+input:focus { border-color: #2563eb; box-shadow: 0 0 5px rgba(37, 99, 235, 0.5); outline: none; }
+
+@media (max-width: 450px) { .dashboard { padding: 25px 15px; } }
+
+/* Modal Styles */
+.modal { display: none; position: fixed; z-index: 1000; padding-top: 80px; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.5);}
+.modal-content { background-color: #fff; margin: auto; padding: 30px; border-radius: 10px; width: 90%; max-width: 400px; text-align: center; position: relative;}
+.modal-content h3 { margin-bottom: 20px; color: #2563eb; }
+.modal-content input { width: 80%; padding: 10px; margin-bottom: 15px; border-radius: 5px; border: 1px solid #ccc; }
+.modal-content button { width: 45%; margin: 5px; padding: 10px; border-radius: 5px; border: none; cursor: pointer; font-weight: 600; }
+.modal-content .confirm { background: #16a34a; color: #fff; }
+.modal-content .confirm:hover { background: #15803d; }
+.modal-content .cancel { background: #f87171; color: #fff; }
+.modal-content .cancel:hover { background: #dc2626; }
+
+/* Footer Buttons */
+.dashboard-footer { margin-top: 20px; display: flex; flex-direction: column; gap: 10px; }
+</style>
+</head>
+<body>
+
+<div class="dashboard" id="dashboard">
+  <h2>PadWallet</h2>
+  <p class="user-info" id="userId"></p>
+  <p class="user-info" id="fullName"></p>
+  <p class="balance">₱<span id="walletBalance">0.00</span></p>
+
+  <div class="section">
+    <h3>Send Money</h3>
+    <input type="text" id="recipientId" placeholder="Recipient ID#" />
+    <input type="number" id="sendAmount" placeholder="Amount (₱)" />
+    <button onclick="sendMoney()">Send Money</button>
+    <button onclick="openBarcodeModal()">Show My Barcode</button>
+  </div>
+
+  <!-- Dashboard Footer -->
+  <div class="dashboard-footer">
+    <button onclick="openPassModal()">Change Password</button>
+    <button onclick="openServerModal()" id="serverBtn" style="display:none;">Server Settings</button> <!-- Admin only -->
+    <button onclick="logoutUser()">Logout</button>
+  </div>
+</div>
+
+<!-- Barcode Modal -->
+<div id="barcodeModal" class="modal">
+  <div class="modal-content">
+    <h3>Your ID Barcode</h3>
+    <svg id="barcode"></svg>
+    <br>
+    <button class="confirm" onclick="downloadBarcode()">Download</button>
+    <button class="cancel" onclick="closeBarcodeModal()">Close</button>
+  </div>
+</div>
+
+<!-- Change Password Modal -->
+<div id="passModal" class="modal">
+  <div class="modal-content">
+    <h3>Change Password</h3>
+    <input type="password" id="currentPass" placeholder="Current Password" />
+    <input type="password" id="newPass" placeholder="New Password" />
+    <input type="password" id="confirmPass" placeholder="Confirm New Password" />
+    <br>
+    <button class="confirm" onclick="confirmChangePassword()">Change</button>
+    <button class="cancel" onclick="closePassModal()">Cancel</button>
+  </div>
+</div>
+
+<!-- Server Settings Modal -->
+<div id="serverModal" class="modal">
+  <div class="modal-content">
+    <h3>Server Settings</h3>
+    <input type="text" id="serverIpInput" placeholder="Server IP" />
+    <br>
+    <button class="confirm" onclick="saveServerIp()">Save</button>
+    <button class="cancel" onclick="closeServerModal()">Cancel</button>
+  </div>
+</div>
+
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyCH_QogdKm5ugxqfUXiCKOH1UussXEn5r4",
+  authDomain: "vendo-6c9d5.firebaseapp.com",
+  projectId: "vendo-6c9d5",
+  storageBucket: "vendo-6c9d5.firebasestorage.app",
+  messagingSenderId: "424395684072",
+  appId: "1:424395684072:web:b7b757d56f416c1864b15d",
+  measurementId: "G-GQPV7Y72LH",
+  databaseURL: "https://vendo-6c9d5-default-rtdb.firebaseio.com/"
+};
+
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.database();
+const dashboard = document.getElementById("dashboard");
+let currentUserUid = null;
+
+// Auth & Role Check
+auth.onAuthStateChanged(user => {
+  if (user) {
+    currentUserUid = user.uid;
+    db.ref('users/' + currentUserUid).once('value')
+      .then(snapshot => {
+        if (!snapshot.exists()) { alert("Access denied!"); auth.signOut(); return; }
+
+        const userData = snapshot.val();
+        document.getElementById("userId").innerText = `ID: ${userData.idNumber || ''}`;
+        document.getElementById("fullName").innerText = `Name: ${userData.fullname || ''}`;
+        const walletBalance = parseFloat(userData.wallet || 0).toFixed(2);
+        document.getElementById("walletBalance").innerText = walletBalance;
+
+        dashboard.classList.add("show");
+
+        // Show Server Settings only for admins
+        const serverBtn = document.getElementById("serverBtn");
+        serverBtn.style.display = (userData.role === "admin") ? "block" : "none";
+
+        // Initialize wallet if missing
+        if (userData.wallet === undefined) {
+          db.ref('users/' + currentUserUid + '/wallet').set(0);
+        }
+      });
+  } else {
+    window.location.href = "index.html";
+  }
+});
+
+// Logout
+function logoutUser() {
+  auth.signOut().then(() => { window.location.href = "index.html"; })
+  .catch(error => alert("Logout Error: " + error.message));
+}
+
+// Send Money
+function sendMoney() {
+  const recipientId = document.getElementById("recipientId").value.trim();
+  const amount = parseFloat(document.getElementById("sendAmount").value);
+
+  if (!recipientId || isNaN(amount) || amount <= 0) { alert("Enter valid recipient and amount!"); return; }
+
+  db.ref('users/' + currentUserUid + '/wallet').once('value')
+    .then(senderSnap => {
+      const senderBalance = parseFloat(senderSnap.val() || 0);
+      if (senderBalance < amount) { alert("Insufficient balance!"); return; }
+
+      db.ref('users').orderByChild('idNumber').equalTo(recipientId).once('value')
+        .then(snapshot => {
+          if (!snapshot.exists()) { alert("Recipient not found!"); return; }
+          const recipientUid = Object.keys(snapshot.val())[0];
+
+          db.ref('users/' + currentUserUid + '/wallet').set(senderBalance - amount)
+            .then(() => {
+              db.ref('users/' + recipientUid + '/wallet').once('value')
+                .then(recSnap => {
+                  const recipientBalance = parseFloat(recSnap.val() || 0);
+                  db.ref('users/' + recipientUid + '/wallet').set(recipientBalance + amount)
+                    .then(() => {
+                      document.getElementById("walletBalance").innerText = (senderBalance - amount).toFixed(2);
+                      document.getElementById("recipientId").value = "";
+                      document.getElementById("sendAmount").value = "";
+                      alert(`Successfully sent ₱${amount.toFixed(2)} to ${recipientId}`);
+                    });
+                });
+            });
+        });
+    });
+}
+
+// Change Password Modal
+function openPassModal() { document.getElementById("passModal").style.display = "block"; }
+function closePassModal() { 
+  document.getElementById("passModal").style.display = "none"; 
+  document.getElementById("currentPass").value = "";
+  document.getElementById("newPass").value = "";
+  document.getElementById("confirmPass").value = "";
+}
+
+function confirmChangePassword() {
+  const currentPass = document.getElementById("currentPass").value;
+  const newPass = document.getElementById("newPass").value;
+  const confirmPass = document.getElementById("confirmPass").value;
+
+  if (!currentPass || !newPass || !confirmPass) { alert("All fields are required!"); return; }
+  if (newPass !== confirmPass) { alert("New password does not match!"); return; }
+
+  const user = auth.currentUser;
+  const cred = firebase.auth.EmailAuthProvider.credential(user.email, currentPass);
+
+  user.reauthenticateWithCredential(cred)
+    .then(() => user.updatePassword(newPass))
+    .then(() => { 
+      alert("Password changed successfully!"); 
+      closePassModal(); 
+    })
+    .catch(err => alert("Error: " + err.message));
+}
+
+// Barcode Modal
+function openBarcodeModal() {
+  const userId = document.getElementById("userId").innerText.replace("ID: ", "");
+  if (!userId) { alert("User ID not found!"); return; }
+
+  JsBarcode("#barcode", userId, {
+    format: "CODE128",
+    lineColor: "#2563eb",
+    width: 2,
+    height: 60,
+    displayValue: true
+  });
+
+  document.getElementById("barcodeModal").style.display = "block";
+}
+function closeBarcodeModal() { document.getElementById("barcodeModal").style.display = "none"; }
+function downloadBarcode() {
+  const svg = document.getElementById("barcode");
+  const serializer = new XMLSerializer();
+  const source = serializer.serializeToString(svg);
+  const img = new Image();
+  const svgBlob = new Blob([source], {type:"image/svg+xml;charset=utf-8"});
+  const url = URL.createObjectURL(svgBlob);
+
+  img.onload = function() {
+    const canvas = document.createElement("canvas");
+    canvas.width = img.width;
+    canvas.height = img.height;
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(img, 0, 0);
+    const png = canvas.toDataURL("image/png");
+
+    const link = document.createElement("a");
+    link.href = png;
+    link.download = "ID_Barcode.png";
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+  img.src = url;
+}
+
+// Server Settings Modal
+function openServerModal() {
+  db.ref('server/serverip').once('value')
+    .then(snapshot => {
+      document.getElementById("serverIpInput").value = snapshot.val() || '';
+      document.getElementById("serverModal").style.display = "block";
+    })
+    .catch(err => alert("Error fetching server IP: " + err.message));
+}
+
+function closeServerModal() {
+  document.getElementById("serverModal").style.display = "none";
+  document.getElementById("serverIpInput").value = '';
+}
+
+function saveServerIp() {
+  const newIp = document.getElementById("serverIpInput").value.trim();
+  if (!newIp) { alert("Enter a valid IP!"); return; }
+
+  db.ref('server').update({ serverip: newIp })
+    .then(() => {
+      alert("Server IP updated successfully!");
+      closeServerModal();
+    })
+    .catch(err => alert("Error updating server IP: " + err.message));
+}
+
+// Close modals on outside click
+window.onclick = function(event) {
+  if (event.target === document.getElementById("passModal")) closePassModal();
+  if (event.target === document.getElementById("barcodeModal")) closeBarcodeModal();
+  if (event.target === document.getElementById("serverModal")) closeServerModal();
+}
+</script>
+
+</body>
+</html>

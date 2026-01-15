@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>PadWallet Admin Dashboard</title>
+
+<!-- Firebase SDKs -->
+<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+
+<!-- Icons -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap');
+
+* { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Poppins', sans-serif; }
+body { background: linear-gradient(135deg, #2563eb, #4bc7d8); min-height: 100vh; padding: 20px; }
+
+.dashboard {
+  background: #fff;
+  border-radius: 15px;
+  padding: 25px 20px;
+  max-width: 1000px;
+  margin: auto;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+  display: none; /* hide by default */
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.dashboard.show { display: block; opacity: 1; }
+
+.dashboard-header { display: flex; flex-direction: column; align-items: center; gap: 15px; margin-bottom: 20px; }
+.dashboard-actions { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+.logout, .change-pass-btn, .add-wallet-btn, .history-btn {
+  padding: 8px 15px; border-radius: 8px; cursor: pointer; font-weight: 600; border: none; transition: 0.3s;
+}
+.logout { background: #f87171; color: #fff; }
+.logout:hover { background: #dc2626; }
+.change-pass-btn { background: #fbbf24; color: #fff; }
+.change-pass-btn:hover { background: #f59e0b; }
+.add-wallet-btn { background: #16a34a; color: #fff; }
+.add-wallet-btn:hover { background: #15803d; }
+.history-btn { background: #3b82f6; color: #fff; }
+.history-btn:hover { background: #2563eb; }
+
+h2 { color: #2563eb; font-weight: 600; }
+
+.total-balance { text-align: right; font-weight: 600; margin-bottom: 10px; color: #2563eb; }
+
+table { width: 100%; border-collapse: collapse; font-size: 14px; margin-bottom: 30px; }
+th, td { padding: 12px; text-align: center; }
+th { background-color: #2563eb; color: #fff; font-weight: 600; }
+tr:nth-child(even) { background-color: #f9fafb; }
+
+@media (max-width: 750px) {
+  table, thead, tbody, th, td, tr { display: block; }
+  th { display: none; }
+  tr { margin-bottom: 15px; border-bottom: 1px solid #ccc; padding-bottom: 10px; }
+  td { text-align: right; padding-left: 50%; position: relative; }
+  td::before { content: attr(data-label); position: absolute; left: 15px; font-weight: 600; color: #2563eb; text-align: left; }
+}
+
+/* Modal Styles */
+.modal { display: none; position: fixed; z-index: 1000; padding-top: 80px; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.5); }
+.modal-content { background-color: #fff; margin: auto; padding: 30px; border-radius: 10px; width: 90%; max-width: 500px; text-align: center; position: relative; }
+.modal-content h3 { margin-bottom: 20px; color: #2563eb; }
+.modal-content input { width: 80%; padding: 10px; margin-bottom: 15px; border-radius: 5px; border: 1px solid #ccc; }
+.modal-content button { width: 45%; margin: 5px; padding: 10px; border-radius: 5px; border: none; cursor: pointer; font-weight: 600; }
+.modal-content .confirm { background: #16a34a; color: #fff; }
+.modal-content .confirm:hover { background: #15803d; }
+.modal-content .cancel { background: #f87171; color: #fff; }
+.modal-content .cancel:hover { background: #dc2626; }
+
+.transaction-list { max-height: 400px; overflow-y: auto; text-align: left; }
+.transaction-list div { border-bottom: 1px solid #ccc; padding: 10px 0; }
+.transaction-list div span { display: inline-block; width: 48%; }
+</style>
+</head>
+<body>
+
+<div class="dashboard">
+  <div class="dashboard-header">
+    <h2>PadWallet Admin Dashboard</h2>
+    <div class="dashboard-actions">
+      <button class="add-wallet-btn" onclick="openWalletModal()"><i class="fas fa-plus-circle"></i> Add Wallet</button>
+      <button class="change-pass-btn" onclick="openPassModal()"><i class="fas fa-key"></i> Change Password</button>
+      <button class="history-btn" onclick="openTransactionModal()"><i class="fas fa-history"></i> Transaction History</button>
+      <button class="logout" onclick="logoutAdmin()"><i class="fas fa-sign-out-alt"></i> Logout</button>
+    </div>
+  </div>
+
+  <div class="total-balance">Total Wallet Balance: ₱<span id="totalBalance">0.00</span></div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>ID Number</th>
+        <th> Name</th>
+        <th>Email</th>
+        <th>Wallet Balance (₱)</th>
+        
+      </tr>
+    </thead>
+    <tbody id="usersTable"></tbody>
+  </table>
+</div>
+
+<!-- Add Wallet Modal -->
+<div id="walletModal" class="modal">
+  <div class="modal-content">
+    <h3>Add Wallet Funds</h3>
+    <input type="text" id="modalIdNumber" placeholder="User ID Number" />
+    <input type="number" id="modalAmount" placeholder="Amount (₱)" />
+    <br>
+    <button class="confirm" onclick="confirmAddWallet()">Add</button>
+    <button class="cancel" onclick="closeWalletModal()">Cancel</button>
+  </div>
+</div>
+
+<!-- Change Password Modal -->
+<div id="passModal" class="modal">
+  <div class="modal-content">
+    <h3>Change Password</h3>
+    <input type="password" id="currentPass" placeholder="Current Password" />
+    <input type="password" id="newPass" placeholder="New Password" />
+    <input type="password" id="confirmPass" placeholder="Confirm New Password" />
+    <br>
+    <button class="confirm" onclick="confirmChangePassword()">Change</button>
+    <button class="cancel" onclick="closePassModal()">Cancel</button>
+  </div>
+</div>
+
+<!-- Transaction History Modal -->
+<div id="transactionModal" class="modal">
+  <div class="modal-content">
+    <h3>Transaction History</h3>
+    <div class="transaction-list" id="transactionList"></div>
+    <button class="cancel" onclick="closeTransactionModal()">Close</button>
+  </div>
+</div>
+
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyCH_QogdKm5ugxqfUXiCKOH1UussXEn5r4",
+  authDomain: "vendo-6c9d5.firebaseapp.com",
+  projectId: "vendo-6c9d5",
+  storageBucket: "vendo-6c9d5.firebasestorage.app",
+  messagingSenderId: "424395684072",
+  appId: "1:424395684072:web:b7b757d56f416c1864b15d",
+  measurementId: "G-GQPV7Y72LH",
+  databaseURL: "https://vendo-6c9d5-default-rtdb.firebaseio.com/"
+};
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.database();
+
+const dashboard = document.querySelector(".dashboard");
+let currentAdminUid = null;
+let currentAdminEmail = "";
+
+
+// Check Firebase auth
+auth.onAuthStateChanged(user => {
+  if (user) {
+    // Only allow admin@gmail.com
+    const email = user.email;
+    if (email === "admin@gmail.com") {
+      currentAdminEmail = email;
+      dashboard.classList.add("show");
+      loadUsers();
+    } else {
+      alert("Access denied!");
+      auth.signOut().then(() => window.location.href = "index.html");
+    }
+  } else {
+    window.location.href = "index.html";
+  }
+});
+
+
+// Load users and total balance
+function loadUsers() {
+  db.ref('users').on('value', usersSnap => {
+    const usersTable = document.getElementById("usersTable");
+    let total = 0;
+    usersTable.innerHTML = "";
+
+    usersSnap.forEach(userSnap => {
+      const user = userSnap.val();
+
+      // Skip admin
+      if (user.email === currentAdminEmail) return;
+
+      const wallet = parseFloat(user.wallet || 0);
+      total += wallet;
+
+      usersTable.innerHTML += `
+        <tr>
+          <td data-label="ID Number">${user.idNumber || "N/A"}</td>
+          <td data-label="Full Name">${user.fullname || "N/A"}</td>
+          <td data-label="Email">${user.email || "N/A"}</td>
+          <td data-label="Wallet Balance">₱${wallet.toFixed(2)}</td>
+        </tr>
+      `;
+    });
+
+    document.getElementById("totalBalance").innerText = total.toFixed(2);
+  });
+}
+
+
+// Transaction Modal
+function openTransactionModal() { document.getElementById("transactionModal").style.display = "block"; loadTransactions(); }
+function closeTransactionModal() { document.getElementById("transactionModal").style.display = "none"; }
+
+function loadTransactions() {
+  const list = document.getElementById("transactionList");
+  list.innerHTML = "Loading...";
+  
+  db.ref('transactions').orderByChild('timestamp').limitToLast(50).once('value')
+    .then(snapshot => {
+      list.innerHTML = "";
+      snapshot.forEach(tranSnap => {
+        const t = tranSnap.val();
+        if (t.adminEmail !== currentAdminEmail) return; // <-- only admin's transactions
+
+        const date = new Date(t.timestamp).toLocaleString();
+        list.innerHTML += `<div>
+          <span><strong>${date}</strong></span><br>
+          <span>User ID: ${t.userId}</span><br>
+          <span>Amount: ₱${parseFloat(t.amount).toFixed(2)}</span><br>
+          <span>Admin: ${t.adminEmail}</span>
+        </div>`;
+      });
+    });
+}
+
+
+// Wallet Modal
+function openWalletModal() { document.getElementById("walletModal").style.display = "block"; }
+function closeWalletModal() {
+  document.getElementById("walletModal").style.display = "none";
+  document.getElementById("modalIdNumber").value = "";
+  document.getElementById("modalAmount").value = "";
+}
+
+function confirmAddWallet() {
+  const idNumber = document.getElementById("modalIdNumber").value.trim();
+  const amount = parseFloat(document.getElementById("modalAmount").value);
+  if (!idNumber || isNaN(amount) || amount <= 0) { alert("Enter valid ID and amount!"); return; }
+
+  db.ref('users').orderByChild('idNumber').equalTo(idNumber).once('value')
+    .then(snapshot => {
+      if (!snapshot.exists()) { alert("User not found!"); return; }
+      const uid = Object.keys(snapshot.val())[0];
+      const user = snapshot.val()[uid]; // ✅ get user object to access fullname
+      const fullname = user.fullname || "N/A"; // fallback if undefined
+
+      db.ref('users/' + uid + '/wallet').transaction(currentBalance => (parseFloat(currentBalance||0) + amount), 
+      (error, committed, snap) => {
+        if (error) alert("Error: " + error.message);
+        else if (committed) {
+          const newBalance = snap.val();
+          alert(`Added ₱${amount.toFixed(2)}. New Balance: ₱${newBalance.toFixed(2)}`);
+          closeWalletModal();
+          loadUsers();
+          db.ref('transactions').push({
+            name: fullname, // ✅ now defined
+            userId: idNumber,
+            amount: amount,
+            balanceAfter: newBalance,
+            type: "add_wallet",
+            timestamp: Date.now(),
+            adminEmail: currentAdminEmail
+          });
+        }
+      });
+    });
+}
+
+
+// Change Password Modal
+function openPassModal() { document.getElementById("passModal").style.display = "block"; }
+function closePassModal() {
+  document.getElementById("passModal").style.display = "none";
+  document.getElementById("currentPass").value = "";
+  document.getElementById("newPass").value = "";
+  document.getElementById("confirmPass").value = "";
+}
+
+function confirmChangePassword() {
+  const currentPass = document.getElementById("currentPass").value;
+  const newPass = document.getElementById("newPass").value;
+  const confirmPass = document.getElementById("confirmPass").value;
+  if (!currentPass || !newPass || !confirmPass) { alert("All fields are required!"); return; }
+  if (newPass !== confirmPass) { alert("New password does not match!"); return; }
+
+  const user = auth.currentUser;
+  const cred = firebase.auth.EmailAuthProvider.credential(user.email, currentPass);
+  user.reauthenticateWithCredential(cred)
+    .then(() => user.updatePassword(newPass))
+    .then(() => { alert("Password changed successfully!"); closePassModal(); })
+    .catch(err => alert("Error: " + err.message));
+}
+
+function logoutAdmin() { auth.signOut().then(() => window.location.href = "index.html"); }
+
+// Close modals on click outside
+window.onclick = function(event) {
+  if (event.target === document.getElementById("walletModal")) closeWalletModal();
+  if (event.target === document.getElementById("passModal")) closePassModal();
+  if (event.target === document.getElementById("transactionModal")) closeTransactionModal();
+}
+</script>
+
+</body>
+</html>
